@@ -1,0 +1,25 @@
+{
+  "name": "bovada",
+  "version": "1.0.0",
+  "description": "",
+  "main": "bovada.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brandonros/bovada-teaser.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/brandonros/bovada-teaser/issues"
+  },
+  "homepage": "https://github.com/brandonros/bovada-teaser",
+  "dependencies": {
+    "cheerio": "^0.19.0"
+  },
+  "devDependencies": {
+    "browserify": "latest"
+  }
+}
