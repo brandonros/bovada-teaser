@@ -1,0 +1,149 @@
+<!doctype html>
+<html>
+	<head>
+		<style type="text/css">
+			.margin-bottom {
+				margin-bottom: 2rem;
+			}
+		</style>
+
+		<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.6/css/bootstrap.min.css">
+	</head>
+
+	<body>
+		<div class="container text-center margin-bottom">
+			<div>
+				Tease <select id="points">
+					<option value="6">6</option>
+					<option value="6.5">6.5</option>
+					<option value="7" selected>7</option>
+				</select> points
+			</div>
+		</div>
+
+		<div class="container text-center margin-bottom">
+			Wager <input type="text" id="wager" placeholder="wager"> to win <input type="text" id="to_win" disabled>
+		</div>
+
+		<div class="container text-center">
+			<table class="table table-bordered table-striped">
+				<thead>
+					<tr>
+						<th></th>
+						<th>Away</th>
+						<th>Spread</th>
+						<th>Odds</th>
+						<th>Home</th>
+						<th>Spread</th>
+						<th>Odds</th>
+					</tr>
+				</thead>
+
+				<tbody id="output">
+				</tbody>
+			</table>
+		</div>
+
+		<script type="text/javascript" src="bundle.js"></script>
+		<script type="text/javascript" src="bovada.js"></script>
+
+		<script type="text/javascript">
+			var lines;
+
+			/* only do DOM lookups once */
+			var $wager = document.getElementById('wager');
+			var $points = document.getElementById('points');
+			var $output = document.getElementById('output');
+			var $to_win = document.getElementById('to_win');
+
+			function get_lines() {
+				return fetch('https://crossorigin.me/https://sports.bovada.lv/football/nfl/game-lines-market-group')
+				.then(function (res) {
+					return res.text();
+				})
+				.then(function (html) {
+					var body = cheerio.load(html);
+					var scripts = body('script');
+					var script = scripts[scripts.length - 1];
+					var data = script['children'][0]['data'];
+
+					data = data.replace('var swc_market_lists = ', '');
+					data = data.replace(';', '');
+					data = JSON.parse(data);
+
+					return data['items'][0]['itemList']['items'];
+				})
+				.then(function (res) {
+					return translate_games(res);
+				});
+			}
+
+			function trigger_event(element) {
+				if ('createEvent' in document) {
+				    var evt = document.createEvent('HTMLEvents');
+				    evt.initEvent('change', false, true);
+				    element.dispatchEvent(evt);
+				}
+
+				else {
+				    element.fireEvent('onchange');
+				}
+			}
+
+			function init_events() {
+				$wager.addEventListener('keyup', function (event) { 
+					calculate_bets();
+				});
+
+				$points.addEventListener('change', function (event) { 
+					var value = parseInt($points.value);
+
+					var new_lines = calculate_teased_spreads(lines, value);
+					new_lines = calculate_favors(new_lines);
+
+					output.innerHTML = draw_lines(new_lines);
+				});
+
+				document.body.addEventListener('click', function (event) {
+					var target = event['target'];
+
+					if (target.className !== 'line-selector') {
+						return;
+					}
+
+					calculate_bets();
+				});
+			}
+
+			function calculate_bets() {
+				var wager = parseFloat($wager.value);
+
+				if (isNaN(wager)) {
+					$to_win.value = '';
+					return;
+				}
+
+				var checked_selectors = get_array(document, '.line-selector:checked');
+				var num_teams = checked_selectors.length;
+
+				var action = action_map[$points.value][num_teams];
+
+				if (!action) {
+					$to_win.value = '';
+					return;
+				}
+
+				$to_win.value = wager * action;
+			}
+
+			get_lines()
+			.then(function (res) {
+				lines = res;
+
+				init_events();
+
+				trigger_event($points);
+			});
+		</script>
+	</body>
+</html>
