@@ -145,7 +145,7 @@ function translate_games(games) {
 			away_odds: parseInt(away_line['price']['american']),
 			home_odds: parseInt(home_line['price']['american']),
 			away_spread: parseFloat(away_line['price']['handicap']),
-			home_spread: parseFloat(away_line['price']['handicap'])
+			home_spread: parseFloat(home_line['price']['handicap'])
 		});
 	});
 
