@@ -48,56 +48,6 @@ function get_array(parent, selector) {
 	return convert_to_array(parent.querySelectorAll(selector));
 }
 
-function get_action(doc) {
-	return get_array(doc, '.gameline-layout').map(function (layout) {
-		var time = layout.querySelector('time').innerText;
-
-		var teams = layout.querySelectorAll('h3');
-		var away = teams[0].innerText;
-		var home = teams[1].innerText;
-
-		var grid = get_array(layout, '.gameline-grid ul');
-		var spreads = get_array(grid[2], 'li');
-
-		var away_line = spreads[0].innerText.split(' ');
-		var home_line = spreads[1].innerText.split(' ');
-
-		var away_spread = (away_line[0] || '').replace('½', '.5');
-
-		if (away_spread === 'Pick') {
-			away_spread = 0;
-		}
-
-		var away_odds = (away_line[1] || '').replace(/["'()]/g, '');
-
-		if (away_odds === 'EVEN') {
-			away_odds = '+100';
-		}
-
-		var home_spread = (home_line[0] || '').replace('½', '.5');
-
-		if (home_spread === 'Pick') {
-			home_spread = 0;
-		}
-
-		var home_odds = (home_line[1] || '').replace(/["'()]/g, '');
-
-		if (home_odds === 'EVEN') {
-			home_odds = '+100';
-		}
-
-		return {
-			away: away,
-			home: home,
-			time: time,
-			away_odds: parseInt(away_odds),
-			home_odds: parseInt(home_odds),
-			away_spread: parseFloat(away_spread),
-			home_spread: parseFloat(home_spread)
-		};
-	});
-}
-
 function translate_games(games) {
 	var data = [];
 
@@ -112,40 +62,64 @@ function translate_games(games) {
 			return team['type'] !== 'HOME';
 		});
 
-		var lines = game['displayGroups'][0]['itemList'].filter(function (line) {
+		var spread_line = game['displayGroups'][0]['itemList'].find(function (line) {
 			return line['description'] === 'Point Spread';
 		});
 
-		if (lines.length === 0) { /* games with no spread lines yet */
-			return;
-		}
-
-		var lines = lines[0]['outcomes'];
-
-		var home_line = lines.find(function (line) {
-			return line['competitorId'] === home_team['id'];
+		var total_line = game['displayGroups'][0]['itemList'].find(function (line) {
+			return line['description'] === 'Total' && line['outcomes'][0]['price']; /* watch out for empty lines with no price */
 		});
 
-		var away_line = lines.find(function (line) {
-			return line['competitorId'] === away_team['id'];
-		});
+		if (spread_line) {
+			var spread_outcomes = spread_line['outcomes'];
 
-		if (away_line['price']['american'] === 'EVEN') {
-			away_line['price']['american'] = 100;
+			var home_spread_line = spread_outcomes.find(function (outcome) {
+				return outcome['competitorId'] === home_team['id'];
+			});
+
+			var away_spread_line = spread_outcomes.find(function (outcome) {
+				return outcome['competitorId'] === away_team['id'];
+			});
+
+			if (away_spread_line['price']['american'] === 'EVEN') {
+				away_spread_line['price']['american'] = 100;
+			}
+
+			if (home_spread_line['price']['american'] === 'EVEN') {
+				home_spread_line['price']['american'] = 100;
+			}
 		}
 
-		if (home_line['price']['american'] === 'EVEN') {
-			home_line['price']['american'] = 100;
+		if (total_line) {
+			var over_outcome = total_line['outcomes'].find(function (outcome) {
+				return outcome['description'] === 'Over';
+			});
+
+			var under_outcome = total_line['outcomes'].find(function (outcome) {
+				return outcome['description'] === 'Under';
+			});
+
+			if (over_outcome['price']['american'] === 'EVEN') {
+				over_outcome['price']['american'] = 100;
+			}
+
+			if (under_outcome['price']['american'] === 'EVEN') {
+				under_outcome['price']['american'] = 100;
+			}
 		}
 
 		data.push({
 			away: away_team['description'],
 			home: home_team['description'],
 			time: time,
-			away_odds: parseInt(away_line['price']['american']),
-			home_odds: parseInt(home_line['price']['american']),
-			away_spread: parseFloat(away_line['price']['handicap']),
-			home_spread: parseFloat(home_line['price']['handicap'])
+			away_odds: away_spread_line ? parseInt(away_spread_line['price']['american']) : null,
+			home_odds: home_spread_line ? parseInt(home_spread_line['price']['american']) : null,
+			away_spread: away_spread_line ? parseFloat(away_spread_line['price']['handicap']) : null,
+			home_spread: home_spread_line ? parseFloat(home_spread_line['price']['handicap']) : null,
+			over: over_outcome ? parseFloat(over_outcome['price']['handicap']) : null,
+			over_odds: over_outcome ? parseFloat(over_outcome['price']['handicap']) : null,
+			under: under_outcome ? parseFloat(under_outcome['price']['handicap']) : null,
+			under_odds: under_outcome ? parseInt(under_outcome['price']['american']) : null
 		});
 	});
 
@@ -168,10 +142,27 @@ function calculate_favors(lines) {
 
 function calculate_teased_spreads(lines, amount) {
 	return lines.map(function (line) {
-		var home_spread = line['home_spread'] + (line['home_spread'] >= 0 ? -1 * amount : amount);
-		var away_spread = line['away_spread'] + (line['away_spread'] >= 0 ? -1 * amount : amount);
+		var home_spread_teased = null;
+		var away_spread_teased = null;
+		var over_teased = null;
+		var under_teased = null;
 
-		return Object.assign({}, line, { home_spread_teased: home_spread, away_spread_teased: away_spread});
+		if (line['home_spread'] !== null && line['away_spread'] !== null) {
+			home_spread_teased = line['home_spread'] + (line['home_spread'] >= 0 ? -1 * amount : amount);
+			away_spread_teased = line['away_spread'] + (line['away_spread'] >= 0 ? -1 * amount : amount);
+		}
+
+		if (line['over'] !== null && line['under'] !== null) {
+			over_teased = line['over'] - 7;
+			under_teased = line['under'] + 7;
+		}
+
+		return Object.assign({}, line, { 
+			home_spread_teased: home_spread_teased, 
+			away_spread_teased: away_spread_teased,
+			over_teased: over_teased,
+			under_teased: under_teased
+		});
 	});
 }
 
@@ -184,6 +175,10 @@ function draw_line(line) {
 		<td class="${line.favor === 'home' ? 'bg-warning' : ''}">${line.home}</td>
 		<td>${line.home_spread_teased}</td>
 		<td>${line.home_odds}</td>
+		<td>${line.over_teased}</td>
+		<td>${line.over_odds}</td>
+		<td>${line.under_teased}</td>
+		<td>${line.under_odds}</td>
 	</tr>`;
 }
 
